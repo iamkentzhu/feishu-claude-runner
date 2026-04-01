@@ -57,6 +57,13 @@ class Executor:
     ):
         self.status_dir = status_dir
         self.claude_bin = claude_bin
+        # Resolve settings_file: explicit arg → CLAUDE_SETTINGS env → ~/.claude/settings.json
+        if not settings_file:
+            settings_file = os.environ.get("CLAUDE_SETTINGS", "")
+        if not settings_file:
+            _default = Path.home() / ".claude" / "settings.json"
+            if _default.exists():
+                settings_file = str(_default)
         self.settings_file = settings_file
         self.workdir = str(Path(workdir).expanduser().resolve())
         effective_run_id = run_id or _run_id(label)
