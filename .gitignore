@@ -1,0 +1,15 @@
+# Run records and logs
+runs/
+*.log
+
+# Local config (contains secrets)
+config.json
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
