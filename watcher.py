@@ -169,6 +169,11 @@ def watch(
                 )
                 fallback_triggered = True
                 return
+            # For local runs: don't exit — keep polling until process finishes,
+            # then send a result card so the user sees the actual output (even
+            # if it's just "I don't have this tool").
+            # We only notify stalled once (fallback_triggered acts as the flag).
+            fallback_triggered = True  # suppress duplicate stalled notifications
 
         # ── ACP stall by log mtime (for ACP runs that log to file) ───────────
         if (
