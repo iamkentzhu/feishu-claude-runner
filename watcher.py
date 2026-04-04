@@ -11,6 +11,7 @@ Key improvements over the old watch_and_update_card.py:
 """
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -27,6 +28,74 @@ KEYWORDS = [
     "完成", "成功", "失败", "错误", "开始", "正在", "已",
     "Creating", "Reading", "Writing", "Error", "Success",
 ]
+def _tool_label(name: str) -> str:
+    mapping = {
+        "Read": "Claude 正在读取文件",
+        "Edit": "Claude 正在修改代码",
+        "Write": "Claude 正在写入文件",
+        "Bash": "Claude 正在执行命令",
+        "Grep": "Claude 正在搜索代码",
+        "Glob": "Claude 正在查找文件",
+        "WebFetch": "Claude 正在抓取网页",
+        "TodoWrite": "Claude 正在更新任务清单",
+    }
+    return mapping.get(name, f"Claude 正在调用工具：{name}")
+
+
+def _summarize_stream_event(line: str) -> str:
+    try:
+        event = json.loads(line)
+    except Exception:
+        return ""
+
+    etype = event.get("type")
+
+    if etype == "assistant":
+        message = event.get("message") or {}
+        content = message.get("content") or []
+        if not content:
+            return "Claude 正在思考"
+        block = content[0] or {}
+        btype = block.get("type")
+        if btype == "thinking":
+            thinking = (block.get("thinking") or "").strip()
+            if not thinking:
+                return "Claude 正在分析任务"
+            if "Inspecting files" in thinking or "read" in thinking.lower():
+                return "Claude 正在阅读代码和文件"
+            if "Finalizing" in thinking or "final" in thinking.lower():
+                return "Claude 正在整理结果"
+            if "tool" in thinking.lower():
+                return "Claude 正在调用工具处理任务"
+            return "Claude 正在分析任务"
+        if btype == "tool_use":
+            tool_name = block.get("name", "")
+            return _tool_label(tool_name)
+        if btype == "text":
+            text = (block.get("text") or "").strip()
+            return text[:120] if text else "Claude 正在输出结果"
+        return "Claude 正在处理任务"
+
+    if etype == "user":
+        return "Claude 已收到任务输入"
+
+    if etype == "result":
+        subtype = event.get("subtype") or ""
+        if subtype == "success":
+            return "Claude 已完成任务"
+        if subtype == "error_max_turns":
+            return "Claude 达到最大轮数限制"
+        is_error = event.get("is_error")
+        if is_error:
+            return "Claude 执行失败"
+        return "Claude 已返回结果"
+
+    if etype == "system":
+        subtype = event.get("subtype") or ""
+        if subtype == "init":
+            return "Claude 运行环境已初始化"
+
+    return ""
 
 
 # ── log parsing ───────────────────────────────────────────────────────────────
@@ -42,7 +111,8 @@ def _tail(log_file: str, lines: int = 50) -> str:
 def extract_progress(log_file: str) -> str:
     """
     Extract a short progress summary from the log.
-    Prefers structured "# PROGRESS: ..." lines; falls back to keyword heuristics.
+    Prefers structured "# PROGRESS: ..." lines; falls back to stream-json events,
+    then keyword heuristics.
     """
     tail = _tail(log_file, lines=80)
     if not tail:
@@ -52,6 +122,14 @@ def extract_progress(log_file: str) -> str:
     progress_lines = [l.strip() for l in tail.splitlines() if l.strip().startswith(PROGRESS_PREFIX)]
     if progress_lines:
         return progress_lines[-1][len(PROGRESS_PREFIX):].strip()[:200]
+
+    # stream-json fallback
+    jsonish = [l.strip() for l in tail.splitlines() if l.strip().startswith('{')]
+    if jsonish:
+        for line in reversed(jsonish):
+            summary = _summarize_stream_event(line)
+            if summary:
+                return summary[:200]
 
     # Heuristic fallback
     lines = [l.strip() for l in tail.splitlines() if l.strip()]

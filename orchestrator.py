@@ -31,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 import run_record as rr
 from run_record import DEFAULT_STATUS_DIR, now_iso
-from executor import Executor, DEFAULT_WORKDIR, DEFAULT_CLAUDE_BIN
+from executor import Executor, DEFAULT_WORKDIR, DEFAULT_CLAUDE_BIN, DEFAULT_SETTINGS_FILE
 from notifier import notify_card, notify_text, DEFAULT_CHAT_ID
 
 
@@ -163,6 +163,8 @@ def _spawn_detached_run(args: argparse.Namespace, run_id: str) -> None:
     if args.claude_bin:
         cmd += ["--claude-bin", args.claude_bin]
     settings_file = getattr(args, "settings_file", "") or os.environ.get("CLAUDE_SETTINGS", "")
+    if not settings_file and Path(DEFAULT_SETTINGS_FILE).exists():
+        settings_file = DEFAULT_SETTINGS_FILE
     if settings_file:
         cmd += ["--settings-file", settings_file]
     if getattr(args, "notify", False):
@@ -189,6 +191,8 @@ def cmd_run_local(args: argparse.Namespace) -> int:
     effective_run_id = args.run_id or rr._run_id(args.label)
 
     settings_file = getattr(args, "settings_file", "") or os.environ.get("CLAUDE_SETTINGS", "")
+    if not settings_file and Path(DEFAULT_SETTINGS_FILE).exists():
+        settings_file = DEFAULT_SETTINGS_FILE
 
     ex = Executor(
         label=args.label,

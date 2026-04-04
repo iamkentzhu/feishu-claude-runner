@@ -74,7 +74,7 @@ Feishu message
      │         │
      │         ├──► executor.py      Manages Claude subprocess + watchdog
      │         │        │
-     │         │        └──► ~/.local/bin/claude --print   (Claude Code CLI)
+     │         │        └──► ~/.local/bin/claude --bare --print --verbose --output-format stream-json
      │         │
      │         └──► watcher.py       Background monitor (detached process)
      │                   │
@@ -154,6 +154,7 @@ All configuration is via environment variables. No config file required unless y
 | `FEISHU_CONFIG_PATH` | `~/.claude-runner/config.json` | Path to JSON config with credentials |
 | `CLAUDE_RUNNER_WORKDIR` | `$PWD` | Default working directory for Claude |
 | `CLAUDE_RUNNER_STATUS_DIR` | `~/.claude-runner/runs` | Directory for run records and logs |
+| `CLAUDE_SETTINGS` | `~/.claude/claude-runner.settings.json` if present, else `~/.claude/settings.json` if present | Claude settings file passed through `--settings` |
 
 **Config file format (flat, recommended):**
 
@@ -183,7 +184,9 @@ python3 orchestrator.py run-local \
   [--timeout 1800]       \   # max seconds before killing Claude (default 1800)
   [--stall-after 300]    \   # seconds of no output before marking stalled (default 300)
   [--workdir <path>]     \   # override CLAUDE_RUNNER_WORKDIR
-  [--claude-bin <path>]      # path to claude CLI (default ~/.local/bin/claude)
+  [--claude-bin <path>]  \   # path to claude CLI (default ~/.local/bin/claude)
+  [--settings-file <path>]   # explicit Claude settings JSON; otherwise uses CLAUDE_SETTINGS,
+                              # then ~/.claude/claude-runner.settings.json, then ~/.claude/settings.json
 ```
 
 **`--detach` output:**
@@ -226,7 +229,7 @@ Each run creates two files in `CLAUDE_RUNNER_STATUS_DIR/`:
 
 Status transitions: `created` → `running` → `ok` / `failed` / `timeout` / `cancelled`
 
-Progress lines in the task or Claude output prefixed with `# PROGRESS:` are extracted and shown in the Feishu card:
+Progress lines in the task or Claude output prefixed with `# PROGRESS:` are extracted and shown in the Feishu card. When structured progress is absent, the watcher also summarizes Claude `stream-json` events so the card still shows meaningful live status:
 
 ```
 # PROGRESS: Analyzing test failures...

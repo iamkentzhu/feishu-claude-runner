@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 
 DEFAULT_WORKDIR = os.environ.get("CLAUDE_RUNNER_WORKDIR", os.getcwd())
 DEFAULT_CLAUDE_BIN = os.path.expanduser("~/.local/bin/claude")
+DEFAULT_SETTINGS_FILE = os.path.expanduser("~/.claude/claude-runner.settings.json")
 
 
 class Executor:
@@ -57,9 +58,12 @@ class Executor:
     ):
         self.status_dir = status_dir
         self.claude_bin = claude_bin
-        # Resolve settings_file: explicit arg → CLAUDE_SETTINGS env → ~/.claude/settings.json
+        # Resolve settings_file: explicit arg → CLAUDE_SETTINGS env → runner settings → ~/.claude/settings.json
         if not settings_file:
             settings_file = os.environ.get("CLAUDE_SETTINGS", "")
+        if not settings_file:
+            if Path(DEFAULT_SETTINGS_FILE).exists():
+                settings_file = DEFAULT_SETTINGS_FILE
         if not settings_file:
             _default = Path.home() / ".claude" / "settings.json"
             if _default.exists():
@@ -70,7 +74,16 @@ class Executor:
         log_file = str(Path(status_dir).expanduser().resolve() / f"{effective_run_id}.log")
 
         # Build the actual command we'll run (for metadata)
-        _cmd = [claude_bin, "--print", "--permission-mode", "bypassPermissions"]
+        _cmd = [
+            claude_bin,
+            "--bare",
+            "--print",
+            "--verbose",
+            "--output-format",
+            "stream-json",
+            "--permission-mode",
+            "bypassPermissions",
+        ]
         if settings_file:
             _cmd.extend(["--settings", settings_file])
 
@@ -199,7 +212,16 @@ class Executor:
     def run(self) -> int:
         """Execute Claude and return exit code."""
         # Build direct Claude CLI command (no bash wrapper middleman)
-        cmd = [self.claude_bin, "--print", "--permission-mode", "bypassPermissions"]
+        cmd = [
+            self.claude_bin,
+            "--bare",
+            "--print",
+            "--verbose",
+            "--output-format",
+            "stream-json",
+            "--permission-mode",
+            "bypassPermissions",
+        ]
         if self.settings_file:
             cmd.extend(["--settings", self.settings_file])
 
@@ -310,7 +332,7 @@ def main() -> int:
     p.add_argument("--claude-bin", default=DEFAULT_CLAUDE_BIN)
     p.add_argument("--settings-file", default="",
                    help="Path to Claude settings JSON (maps to --settings). "
-                        "Falls back to CLAUDE_SETTINGS env var if not set.")
+                        f"Runner always uses --bare plus --verbose --output-format stream-json to isolate user hooks/MCP and emit realtime events. Falls back to CLAUDE_SETTINGS env var, then {DEFAULT_SETTINGS_FILE}.")
     p.add_argument("--status-dir", default=DEFAULT_STATUS_DIR)
     p.add_argument("--timeout", type=int, default=1800)
     p.add_argument("--stall-after", type=int, default=300)

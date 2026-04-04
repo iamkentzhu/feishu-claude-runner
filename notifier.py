@@ -123,10 +123,9 @@ def build_card(label: str, run_id: str, stages: list[dict]) -> dict:
     ]
     for s in stages:
         icon = s.get("icon", "⏸️")
-        text = f"{icon} **{s['name']}**"
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"{icon} **{s['name']}**"}})
         if s.get("detail"):
-            text += f"\n{s['detail']}"
-        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": text}})
+            elements.append({"tag": "div", "text": {"tag": "plain_text", "content": s["detail"]}})
     return {
         "schema": "2.0",
         "header": {
