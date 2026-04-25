@@ -238,6 +238,36 @@ Progress lines in the task or Claude output prefixed with `# PROGRESS:` are extr
 
 ---
 
+## Result card spec / 结果卡片规范
+
+Each completed run sends two Feishu messages:
+
+**Card 1 (progress)** — patched in-place through all lifecycle stages.
+
+**Card 2 (result)** — sent once on terminal state. Its content must be clean and human-readable.
+
+### What the result card shows / 结果卡片展示内容
+
+| Field | Shown in card |
+|-------|---------------|
+| Task label + success/failure | ✅ |
+| run_id | ✅ |
+| Claude final `result` text | ✅ (trimmed from the front if too long) |
+| URLs found in result | ✅ (linked prominently) |
+| Log file path (on truncation or failure) | ✅ (debug hint only) |
+| `usage` / `modelUsage` / `session_id` | ❌ never |
+| `total_cost_usd` / `cache_creation` | ❌ never |
+| raw stream-json events | ❌ never |
+| Claude tool call events | ❌ never |
+
+### How final result is extracted / 最终结果提取方式
+
+The watcher reads the Claude `--output-format stream-json` log in a single pass and finds the last event where `type == "result"`. If `subtype == "success"`, the `result` field of that event is shown verbatim (cleaned of leading/trailing whitespace). If no such event is found, the watcher falls back to a readable summary of the log tail — **not** a raw dump.
+
+Raw logs (`<run_id>.log`) are preserved locally for debugging but never pushed into the Feishu card.
+
+---
+
 ## Feishu App Setup / 飞书应用配置
 
 1. Go to [open.feishu.cn/app](https://open.feishu.cn/app) → Create custom app / 创建自建应用

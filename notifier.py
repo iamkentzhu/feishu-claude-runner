@@ -91,20 +91,50 @@ _STAGE_DEFS: dict[str, dict] = {
 }
 
 
-def build_result_card(label: str, run_id: str, output: str, success: bool = True) -> dict:
-    """Build a result card with Claude's actual output."""
+def build_result_card(
+    label: str,
+    run_id: str,
+    final_result: str,
+    success: bool = True,
+    *,
+    log_file: str = "",
+    max_chars: int = 1600,
+) -> dict:
+    """Build a result card with Claude's final user-facing output.
+
+    final_result should be the cleaned result text, not raw log or stream-json.
+    """
+    import re
     status_icon = "✅" if success else "❌"
     status_text = "执行成功" if success else "执行失败"
     header_color = "green" if success else "red"
-    # Trim if too long
-    if len(output) > 2000:
-        output = "…（输出已截断，显示末尾部分）\n\n" + output[-1800:]
+
+    # Trim from the front (not the tail) to preserve the most important leading content
+    truncated = False
+    if len(final_result) > max_chars:
+        final_result = final_result[:max_chars]
+        truncated = True
+
+    # Extract URLs to surface them prominently
+    urls = re.findall(r"https?://[^\s)\]}>\"]+", final_result)
+
     elements: list[dict] = [
         {"tag": "div", "text": {"tag": "lark_md", "content": f"**任务：**{label}　{status_icon} {status_text}"}},
         {"tag": "div", "text": {"tag": "lark_md", "content": f"**run_id：**`{run_id}`"}},
         {"tag": "hr"},
-        {"tag": "div", "text": {"tag": "lark_md", "content": f"```\n{output}\n```"}},
+        {"tag": "div", "text": {"tag": "lark_md", "content": final_result}},
     ]
+
+    if urls:
+        links_md = "\n".join(f"[{u}]({u})" for u in urls[:3])
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**链接：**\n{links_md}"}})
+
+    if truncated:
+        hint = f"（结果已截断，完整内容见本地日志：`{log_file}`）" if log_file else "（结果已截断，完整内容见本地日志）"
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": hint}})
+    elif not success and log_file:
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"调试日志：`{log_file}`"}})
+
     return {
         "schema": "2.0",
         "header": {

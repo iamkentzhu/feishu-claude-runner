@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -106,6 +107,79 @@ def _tail(log_file: str, lines: int = 50) -> str:
         return result.stdout if result.returncode == 0 else ""
     except Exception:
         return ""
+
+
+def _extract_links(text: str) -> list[str]:
+    return re.findall(r"https?://[^\s)\]}>\"]+", text or "")
+
+
+def _fallback_log_summary(log_file: str, lines: int = 40) -> str:
+    tail = _tail(log_file, lines=lines)
+    if not tail:
+        return ""
+
+    readable: list[str] = []
+    for line in tail.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("{"):
+            summary = _summarize_stream_event(stripped)
+            if summary:
+                readable.append(summary)
+            continue
+        readable.append(stripped)
+    return "\n".join(readable[-8:])[:1200]
+
+
+def extract_final_result(log_file: str) -> dict:
+    """Extract the user-readable final result from a Claude stream-json log."""
+    final_event: Optional[dict] = None
+    try:
+        with open(log_file, "r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                stripped = line.strip()
+                if not stripped.startswith("{"):
+                    continue
+                try:
+                    event = json.loads(stripped)
+                except Exception:
+                    continue
+                if event.get("type") == "result":
+                    final_event = event
+    except Exception as e:
+        fallback = f"无法读取任务日志：{e}"
+        return {"ok": False, "result": "", "error": fallback, "raw_event_found": False, "links": []}
+
+    if final_event:
+        is_success = final_event.get("subtype") == "success" and not final_event.get("is_error")
+        result = (final_event.get("result") or "").strip()
+        error = (final_event.get("error") or final_event.get("message") or "").strip()
+        if is_success:
+            return {
+                "ok": True,
+                "result": result or "任务已完成，但 Claude final result 为空。",
+                "error": "",
+                "raw_event_found": True,
+                "links": _extract_links(result),
+            }
+        summary = error or result or "Claude 返回失败结果。"
+        return {
+            "ok": False,
+            "result": "",
+            "error": summary,
+            "raw_event_found": True,
+            "links": _extract_links(summary),
+        }
+
+    summary = _fallback_log_summary(log_file)
+    return {
+        "ok": False,
+        "result": summary or "未在日志中找到 Claude final result。",
+        "error": "未在日志中找到 Claude final result。",
+        "raw_event_found": False,
+        "links": _extract_links(summary),
+    }
 
 
 def extract_progress(log_file: str) -> str:
@@ -206,26 +280,39 @@ def watch(
         # ── Terminal states ───────────────────────────────────────────────────
         if status in {"ok", "done"}:
             _notify("done", rec.summary)
-            # Send a separate result card with Claude's actual output
+            # Send a separate result card with Claude's final user-facing result
             if rec.log_file and Path(rec.log_file).exists():
                 try:
                     from notifier import build_result_card, _send_card
-                    output = _tail(rec.log_file, lines=60).strip()
-                    if output:
-                        result_card = build_result_card(rec.label, effective_run_id, output, success=True)
+                    final = extract_final_result(rec.log_file)
+                    result_text = final["result"] if final["ok"] else final.get("error", "")
+                    if result_text:
+                        result_card = build_result_card(
+                            rec.label,
+                            effective_run_id,
+                            result_text,
+                            success=final["ok"],
+                            log_file=rec.log_file,
+                        )
                         _send_card(chat_id, result_card)
                 except Exception as e:
                     print(f"[watcher] result card error: {e}", file=sys.stderr)
             return
         if status == "failed":
             _notify("failed", rec.summary)
-            # Also send result card with failed output for debugging
             if rec.log_file and Path(rec.log_file).exists():
                 try:
                     from notifier import build_result_card, _send_card
-                    output = _tail(rec.log_file, lines=30).strip()
-                    if output:
-                        result_card = build_result_card(rec.label, effective_run_id, output, success=False)
+                    final = extract_final_result(rec.log_file)
+                    result_text = final.get("error") or final.get("result") or rec.summary
+                    if result_text:
+                        result_card = build_result_card(
+                            rec.label,
+                            effective_run_id,
+                            result_text,
+                            success=False,
+                            log_file=rec.log_file,
+                        )
                         _send_card(chat_id, result_card)
                 except Exception as e:
                     print(f"[watcher] failed result card error: {e}", file=sys.stderr)
