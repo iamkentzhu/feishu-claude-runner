@@ -97,6 +97,7 @@ def build_result_card(
     final_result: str,
     success: bool = True,
     *,
+    pid: Optional[int] = None,
     log_file: str = "",
     max_chars: int = 1600,
 ) -> dict:
@@ -121,6 +122,10 @@ def build_result_card(
     elements: list[dict] = [
         {"tag": "div", "text": {"tag": "lark_md", "content": f"**任务：**{label}　{status_icon} {status_text}"}},
         {"tag": "div", "text": {"tag": "lark_md", "content": f"**run_id：**`{run_id}`"}},
+    ]
+    if pid is not None:
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**PID：**`{pid}` — 可发给 Claude Code 定位 session"}})
+    elements += [
         {"tag": "hr"},
         {"tag": "div", "text": {"tag": "lark_md", "content": final_result}},
     ]
@@ -145,12 +150,14 @@ def build_result_card(
     }
 
 
-def build_card(label: str, run_id: str, stages: list[dict]) -> dict:
+def build_card(label: str, run_id: str, stages: list[dict], *, pid: Optional[int] = None) -> dict:
     elements: list[dict] = [
         {"tag": "div", "text": {"tag": "lark_md", "content": f"**任务：**{label}"}},
         {"tag": "div", "text": {"tag": "lark_md", "content": f"**run_id：**`{run_id}`"}},
-        {"tag": "hr"},
     ]
+    if pid is not None:
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**PID：**`{pid}` — 可发给 Claude Code 定位 session"}})
+    elements.append({"tag": "hr"})
     for s in stages:
         icon = s.get("icon", "⏸️")
         elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"{icon} **{s['name']}**"}})
@@ -253,6 +260,7 @@ def notify_card(
     *,
     card_message_id: Optional[str] = None,
     status_dir: str = "",
+    pid: Optional[int] = None,
 ) -> str:
     """
     Send or update a Feishu progress card for a run.
@@ -263,7 +271,7 @@ def notify_card(
     If status_dir is given, the returned message_id is persisted into the run record.
     """
     stages = _upsert_stage(run_id, stage, detail)
-    card = build_card(label, run_id, stages)
+    card = build_card(label, run_id, stages, pid=pid)
 
     if card_message_id:
         _update_card(card_message_id, card)

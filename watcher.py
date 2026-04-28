@@ -273,6 +273,7 @@ def watch(
                 notify_card(
                     rec.label, effective_run_id, stage, detail,
                     chat_id, card_message_id=card_msg_id, status_dir=status_dir,
+                    pid=rec.pid,
                 )
             except Exception as e:
                 print(f"[watcher] notify error: {e}", file=sys.stderr)
@@ -292,6 +293,7 @@ def watch(
                             effective_run_id,
                             result_text,
                             success=final["ok"],
+                            pid=rec.pid,
                             log_file=rec.log_file,
                         )
                         _send_card(chat_id, result_card)
@@ -311,6 +313,7 @@ def watch(
                             effective_run_id,
                             result_text,
                             success=False,
+                            pid=rec.pid,
                             log_file=rec.log_file,
                         )
                         _send_card(chat_id, result_card)

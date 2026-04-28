@@ -51,6 +51,7 @@ def _card(
     status_dir: str = DEFAULT_STATUS_DIR,
     *,
     card_message_id: Optional[str] = None,
+    pid: Optional[int] = None,
 ) -> Optional[str]:
     if not notify:
         return None
@@ -59,6 +60,7 @@ def _card(
             label, run_id, stage, detail, chat_id,
             card_message_id=card_message_id,
             status_dir=status_dir,
+            pid=pid,
         )
     except Exception as e:
         print(f"[orchestrator] notify error: {e}", file=sys.stderr)
@@ -246,7 +248,7 @@ def cmd_run_local(args: argparse.Namespace) -> int:
     rec = ex.record
     end_stage = "done" if rec.status == "ok" else "failed"
     _card(args.notify, rec.label, rec.run_id, end_stage, rec.summary,
-          args.chat_id, args.status_dir, card_message_id=rec.card_message_id)
+          args.chat_id, args.status_dir, card_message_id=rec.card_message_id, pid=rec.pid)
 
     # Send result card (card 2) — same as watcher does in detach mode
     if args.notify and rec.log_file and Path(rec.log_file).exists():
@@ -256,7 +258,8 @@ def cmd_run_local(args: argparse.Namespace) -> int:
             output = _tail(rec.log_file, lines=60).strip()
             if output:
                 result_card = build_result_card(
-                    rec.label, rec.run_id, output, success=(rec.status == "ok")
+                    rec.label, rec.run_id, output, success=(rec.status == "ok"),
+                    pid=rec.pid,
                 )
                 _feishu_send(args.chat_id, result_card)
         except Exception as e:
